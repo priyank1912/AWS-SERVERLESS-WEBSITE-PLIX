@@ -1,0 +1,82 @@
+import { DynamoDBClient, UpdateItemCommand, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
+
+const dynamoDB = new DynamoDBClient({ region: process.env.AWS_REGION });
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+
+export const handler = async (event) => {
+    try {
+        for (const record of event.Records) {
+            const bucketName = record.s3.bucket.name;
+            const objectKey = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
+
+            // Extract folder and movie name from object key
+            const pathParts = objectKey.split('/');
+            const folder = pathParts[0];
+            const movieNameWithExtension = pathParts[1];
+            const movieName = movieNameWithExtension.replace(/\.[^/.]+$/, "");
+
+            // Create a case-sensitive movieId based on genre and movie name
+            const movieId = `${folder}-${movieName}`;
+
+            // Generate the URLs based on the known convention
+            const movieUrl = `https://${bucketName}.s3.amazonaws.com/${objectKey}`;
+            const posterUrl = `https://${bucketName}.s3.amazonaws.com/posters/${movieName}-${folder}-poster.jpeg`;
+            const trailerUrl = `https://${bucketName}.s3.amazonaws.com/trailers/${movieName}-${folder}-trailer.mp4`;
+
+            // Get the current timestamp in ISO format
+            const timestamp = new Date().toISOString();
+
+            // Check if movie already exists in DynamoDB
+            const getParams = {
+                TableName: TABLE_NAME,
+                Key: { movieId: { S: movieId } }
+            };
+
+            const existingItem = await dynamoDB.send(new GetItemCommand(getParams));
+
+            if (existingItem.Item) {
+                // Update existing item with new URLs and UpdatedAt timestamp
+                const updateParams = {
+                    TableName: TABLE_NAME,
+                    Key: { movieId: { S: movieId } },
+                    UpdateExpression: "SET MovieUrl = :movieUrl, PosterUrl = :posterUrl, TrailerUrl = :trailerUrl, UpdatedAt = :updatedAt",
+                    ExpressionAttributeValues: {
+                        ":movieUrl": { S: movieUrl },
+                        ":posterUrl": { S: posterUrl },
+                        ":trailerUrl": { S: trailerUrl },
+                        ":updatedAt": { S: timestamp }
+                    }
+                };
+
+                await dynamoDB.send(new UpdateItemCommand(updateParams));
+                console.log(`Updated existing item for ${movieId} with URLs and UpdatedAt timestamp.`);
+            } else {
+                // Create a new item with all URLs and CreatedAt timestamp
+                const description = `This is a random description for ${movieName}.`;
+                const item = {
+                    movieId: { S: movieId },
+                    MovieName: { S: movieName },
+                    Genre: { S: folder },
+                    Description: { S: description },
+                    MovieUrl: { S: movieUrl },
+                    PosterUrl: { S: posterUrl },
+                    TrailerUrl: { S: trailerUrl },
+                    CreatedAt: { S: timestamp }
+                };
+
+                const putParams = {
+                    TableName: TABLE_NAME,
+                    Item: item
+                };
+
+                await dynamoDB.send(new PutItemCommand(putParams));
+                console.log(`Created new entry for ${movieId} with all URLs and CreatedAt timestamp.`);
+            }
+        }
+
+        return { statusCode: 200, body: 'Success' };
+    } catch (error) {
+        console.error("Error processing S3 event:", error);
+        return { statusCode: 500, body: JSON.stringify({ message: "Internal Server Error" }) };
+    }
+};

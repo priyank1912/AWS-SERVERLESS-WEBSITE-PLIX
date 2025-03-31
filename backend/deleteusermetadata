@@ -1,0 +1,37 @@
+const AWS = require('aws-sdk');
+const cognito = new AWS.CognitoIdentityServiceProvider();
+const dynamodb = new AWS.DynamoDB.DocumentClient();
+
+const USER_POOL_ID = process.env.USER_POOL_ID;
+const DYNAMODB_TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+
+exports.handler = async (event) => {
+  try {
+    const { userSub } = JSON.parse(event.body);
+
+    // Step 1: Delete the user from Cognito
+    await cognito.adminDeleteUser({
+      UserPoolId: USER_POOL_ID,
+      Username: userSub,
+    }).promise();
+
+    // Step 2: Delete the user’s metadata from DynamoDB
+    await dynamodb.delete({
+      TableName: DYNAMODB_TABLE_NAME,
+      Key: {
+        UserID: userSub, // Assuming UserID is the primary key in your DynamoDB table
+      },
+    }).promise();
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'User deleted successfully' }),
+    };
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: 'Error deleting user', error: error.message }),
+    };
+  }
+};

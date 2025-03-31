@@ -1,0 +1,55 @@
+import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+
+const dynamoDB = new DynamoDBClient({ region: process.env.AWS_REGION });
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+
+export const handler = async (event) => {
+    const email = event.queryStringParameters?.email;
+
+    if (!email) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ message: "Email is required as a query parameter." })
+        };
+    }
+
+    // Set up parameters for the Scan command with a filter expression
+    const params = {
+        TableName: TABLE_NAME,
+        FilterExpression: "Email = :email",
+        ExpressionAttributeValues: {
+            ":email": { S: email }
+        }
+    };
+
+    try {
+        // Create and send the Scan command to DynamoDB
+        const command = new ScanCommand(params);
+        const response = await dynamoDB.send(command);
+
+        if (response.Items.length === 0) {
+            return {
+                statusCode: 404,
+                body: JSON.stringify({ message: "User not found." })
+            };
+        }
+
+        // Convert DynamoDB response to JSON format for the first matched item
+        const userMetadata = {
+            UserID: response.Items[0].UserID.S,
+            Email: response.Items[0].Email.S,
+            Username: response.Items[0].Username.S
+        };
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ user: userMetadata })
+        };
+    } catch (error) {
+        console.error("Error fetching user metadata:", error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ message: "Internal Server Error" })
+        };
+    }
+};

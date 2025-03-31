@@ -1,0 +1,32 @@
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+
+const dynamoDB = new DynamoDBClient({ region: process.env.AWS_REGION });
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+
+export const handler = async (event) => {
+    // Extract user attributes from the Cognito event
+    const userId = event.request.userAttributes.sub; // Unique Cognito user ID
+    const email = event.request.userAttributes.email;
+    const username = event.userName;
+
+    const params = {
+        TableName: TABLE_NAME,
+        Item: {
+            UserID: { S: userId }, // Primary key in DynamoDB
+            Email: { S: email },
+            Username: { S: username }
+        }
+    };
+
+    try {
+        // Create and send the PutItem command to DynamoDB
+        const command = new PutItemCommand(params);
+        await dynamoDB.send(command);
+        console.log("User metadata saved successfully in DynamoDB");
+    } catch (error) {
+        console.error("Error saving user metadata:", error);
+    }
+
+    // Return the event back to Cognito
+    return event;
+};

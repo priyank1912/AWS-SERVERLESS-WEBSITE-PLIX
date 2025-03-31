@@ -1,0 +1,61 @@
+import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+
+const dynamoDB = new DynamoDBClient({ region: process.env.AWS_REGION });
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME;
+
+export const handler = async (event) => {
+    try {
+        const movieId = event.pathParameters?.id;
+
+        if (!movieId) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ message: "movieId is required as a path parameter." })
+            };
+        }
+
+        // Split movieId to extract genre and movie name
+        const [genre] = movieId.split('-');
+
+        const params = {
+            TableName: TABLE_NAME,
+            FilterExpression: "#gen = :genreVal AND #movId <> :movieIdVal",
+            ExpressionAttributeNames: {
+                "#gen": "Genre",
+                "#movId": "movieId"
+            },
+            ExpressionAttributeValues: {
+                ":genreVal": { S: genre },
+                ":movieIdVal": { S: movieId }
+            }
+        };
+
+        const data = await dynamoDB.send(new ScanCommand(params));
+
+        if (!data.Items || data.Items.length === 0) {
+            return {
+                statusCode: 404,
+                body: JSON.stringify({ message: "No similar movies found for the specified genre." })
+            };
+        }
+
+        const similarMovies = data.Items.map((item) => ({
+            movieId: item.movieId.S,
+            movieName: item.MovieName.S,
+            genre: item.Genre.S,
+            movieUrl: item.MovieUrl?.S,
+            posterUrl: item.PosterUrl?.S
+        }));
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ success: true, similar: similarMovies })
+        };
+    } catch (error) {
+        console.error("Error fetching similar movies:", error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ message: "Internal Server Error" })
+        };
+    }
+};

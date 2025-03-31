@@ -1,0 +1,34 @@
+import { CognitoIdentityProviderClient, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider';
+
+const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION });
+
+export const handler = async (event) => {
+    const { email, password } = JSON.parse(event.body);
+
+    const params = {
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        ClientId: process.env.COGNITO_CLIENT_ID,
+        AuthParameters: {
+            USERNAME: email,
+            PASSWORD: password,
+        },
+    };
+
+    try {
+        const command = new InitiateAuthCommand(params);
+        const response = await cognitoClient.send(command);
+        const idToken = response.AuthenticationResult.IdToken;
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                token: idToken,
+                message: "Login successful",
+            }),
+        };
+    } catch (error) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ message: error.message }),
+        };
+    }
+};

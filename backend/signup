@@ -1,0 +1,33 @@
+import { CognitoIdentityProviderClient, SignUpCommand } from "@aws-sdk/client-cognito-identity-provider";
+
+// Initialize the Cognito Identity Provider client
+const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION });
+
+export const handler = async (event) => {
+    try {
+        const { email, username, password } = JSON.parse(event.body);
+
+        const params = {
+            ClientId: process.env.COGNITO_CLIENT_ID,
+            Username: username,
+            Password: password,
+            UserAttributes: [
+                { Name: "email", Value: email },
+            ]
+        };
+
+        const command = new SignUpCommand(params);
+        const response = await cognitoClient.send(command);
+
+        return {
+            statusCode: 201,
+            body: JSON.stringify({ message: "User signed up successfully", data: response }),
+        };
+    } catch (error) {
+        console.error("Error signing up user:", error);
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ message: error.message }),
+        };
+    }
+};
